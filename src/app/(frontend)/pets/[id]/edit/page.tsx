@@ -1,5 +1,6 @@
 import { MedicalRecord } from '@/utilities/MedicalRecord';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 
 interface DailyCare {
   id: string;
@@ -51,31 +52,75 @@ interface PageProps {
   }>;
 }
 
-async function getUser(): Promise<User | null> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/users/me`, {
-    credentials: 'include',
-    cache: 'no-store',
-    headers: { Cookie: '' }, // Forward cookies if needed
-  });
-  if (!res.ok) {
-    if (res.status === 401) {
-      return null;
-    }
-    throw new Error('Failed to fetch user data');
+// Helper function to get the base URL
+function getBaseUrl(): string {
+  // En producción (Vercel)
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
   }
-  return res.json();
+  
+  // Variable de entorno personalizada
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL;
+  }
+  
+  // Desarrollo local
+  return 'http://localhost:3000';
+}
+
+async function getUser(): Promise<User | null> {
+  try {
+    const cookieStore = cookies();
+    const baseUrl = getBaseUrl();
+    
+    const res = await fetch(`${baseUrl}/api/users/me`, {
+      method: 'GET',
+      headers: {
+        'Cookie': cookieStore.toString(),
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+    
+    if (!res.ok) {
+      if (res.status === 401) {
+        return null;
+      }
+      console.error('Failed to fetch user:', res.status, res.statusText);
+      throw new Error(`Failed to fetch user data: ${res.status}`);
+    }
+    
+    return res.json();
+  } catch (error) {
+    console.error('Error in getUser:', error);
+    return null;
+  }
 }
 
 async function getPet(petId: string): Promise<Pet> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/pets/${petId}`, {
-    credentials: 'include',
-    cache: 'no-store',
-    headers: { Cookie: '' }, // Forward cookies if needed
-  });
-  if (!res.ok) {
-    throw new Error('Failed to fetch pet details');
+  try {
+    const cookieStore = cookies();
+    const baseUrl = getBaseUrl();
+    
+    const res = await fetch(`${baseUrl}/api/pets/${petId}`, {
+      method: 'GET',
+      headers: {
+        'Cookie': cookieStore.toString(),
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+    
+    if (!res.ok) {
+      console.error('Failed to fetch pet:', res.status, res.statusText);
+      throw new Error(`Failed to fetch pet details: ${res.status}`);
+    }
+    
+    return res.json();
+  } catch (error) {
+    console.error('Error in getPet:', error);
+    throw error;
   }
-  return res.json();
 }
 
 export default async function PetDetailPage({ params }: PageProps) {
@@ -106,6 +151,7 @@ export default async function PetDetailPage({ params }: PageProps) {
       isOwner = ownerId === userData.user?.id || userData.user?.role === 'admin';
     }
   } catch (err) {
+    console.error('Error in PetDetailPage:', err);
     error = err instanceof Error ? err.message : 'An error occurred';
   }
 
