@@ -1,67 +1,165 @@
-# Payload Blank Template
+#DailyPawie 🐾
+A comprehensive pet care management platform designed to help pet parents organize, track, and manage their furry friends' health and daily care needs.
+📋 Overview
+DailyPawie is a digital platform that serves as a centralized hub for pet care management. Born from the growing concern of pet owners about providing the best quality of life for their companions, this tool helps solve common challenges faced by pet parents in managing their pets' health records, daily care routines, and medical appointments.
+The platform recognizes that pets have become fundamental family members, positively influencing both emotional and psychological well-being of households, especially in Spain where pet adoption continues to rise.
+✨ Features
+🏠 Home Dashboard
 
-This template comes configured with the bare minimum to get started on anything you need.
+Pet Cards: Quick overview of all registered pets
+Smart Reminders: Upcoming grooming appointments, medication schedules, and vet visits
+Personalized Recommendations: Species-specific care tips and breed information
+Photo Gallery: Display your pets' favorite moments
 
-## Quick start
+🐕 Pet Profiles
+Comprehensive pet information management including:
 
-This template can be deployed directly from our Cloud hosting and it will setup MongoDB and cloud S3 object storage for media.
+Basic Information: Photo, name, species (dogs & cats), breed, gender, age, birth date
+Physical Details: Size, weight tracking
+Ownership: Owner and caregiver information
 
-## Quick Start - local setup
+🏥 Medical History
+Complete veterinary record keeping:
 
-To spin up this template locally, follow these steps:
+Vaccinations: Type, administration date, next dose due, batch numbers
+Deworming: Internal and external treatments with scheduling
+Veterinary Consultations: Visit dates, reasons, diagnoses, recommended treatments
+Surgical Procedures: Surgery type, date, complications, post-operative care
+Allergies: Food and medication reaction tracking
+Laboratory Tests: Blood work, urine tests, X-rays, ultrasounds
+Medical Treatments: Medications (name, dosage, duration), additional therapies
+Progress Tracking: Health evolution notes and treatment updates
 
-### Clone
+📅 Care Management
+Daily care routine organization:
 
-After you click the `Deploy` button above, you'll want to have standalone copy of this repo on your machine. If you've already cloned this repo, skip to [Development](#development).
+Feeding Schedule: Appropriate nutrition and fresh water access
+Hygiene Care: Grooming, dental care, bathing, ear and eye cleaning
+Exercise Tracking: Daily walks, active play, indoor activities
+Attention & Affection: Quality time and mental stimulation
+Safe Environment: Clean living space and hazard monitoring
+Training & Socialization: Behavior reinforcement and social development
 
-### Development
+🔔 Smart Reminders
 
-1. First [clone the repo](#clone) if you have not done so already
-2. `cd my-project && cp .env.example .env` to copy the example environment variables. You'll need to add the `MONGODB_URI` from your Cloud project to your `.env` if you want to use S3 storage and the MongoDB database that was created for you.
+Veterinary appointment notifications
+Medication time alerts
+Grooming schedule reminders
+Exercise and feeding time notifications
 
-3. `pnpm install && pnpm dev` to install dependencies and start the dev server
-4. open `http://localhost:3000` to open the app in your browser
+🛠️ Tech Stack
 
-That's it! Changes made in `./src` will be reflected in your app. Follow the on-screen instructions to login and create your first admin user. Then check out [Production](#production) once you're ready to build and serve your app, and [Deployment](#deployment) when you're ready to go live.
+Frontend: Next.js with Tailwind CSS 4
+Backend: Supabase + Payload CMS
+Database: PostgreSQL (via Supabase)
+Authentication: Supabase Auth
+External APIs: Dog breed information and pet facts
 
-#### Docker (Optional)
+🎯 Target Audience
+DailyPawie is designed for Spanish pet parents who:
 
-If you prefer to use Docker for local development instead of a local MongoDB instance, the provided docker-compose.yml file can be used.
+Average age of 44 years
+Are parents with children
+Own multiple pets (average 2+ animals)
+Have stable income but limited time for pet record organization
+Need centralized pet care management
+Want to ensure proper care scheduling and medical record keeping
 
-To do so, follow these steps:
+🚀 Getting Started
+Prerequisites
 
-- Modify the `MONGODB_URI` in your `.env` file to `mongodb://127.0.0.1/<dbname>`
-- Modify the `docker-compose.yml` file's `MONGODB_URI` to match the above `<dbname>`
-- Run `docker-compose up` to start the database, optionally pass `-d` to run in the background.
+Node.js (v18 or higher)
+npm or yarn
+Supabase account
 
-## How it works
+Installation
 
-The Payload config is tailored specifically to the needs of most websites. It is pre-configured in the following ways:
+Clone the repository
+bashgit clone https://github.com/yourusername/dailypawie.git
+cd dailypawie
 
-### Collections
+Install dependencies
+bashnpm install
+# or
+yarn install
 
-See the [Collections](https://payloadcms.com/docs/configuration/collections) docs for details on how to extend this functionality.
+Environment Setup
+Create a .env.local file in the root directory:
+envNEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-- #### Users (Authentication)
+Database Setup
+Run the Supabase migrations:
+bashnpx supabase db reset
 
-  Users are auth-enabled collections that have access to the admin panel.
+Start the development server
+bashnpm run dev
+# or
+yarn dev
 
-  For additional help, see the official [Auth Example](https://github.com/payloadcms/payload/tree/main/examples/auth) or the [Authentication](https://payloadcms.com/docs/authentication/overview#authentication-overview) docs.
+Open your browser
+Navigate to http://localhost:3000
 
-- #### Media
+📱 Usage
 
-  This is the uploads enabled collection. It features pre-configured sizes, focal point and manual resizing to help you manage your pictures.
+Create Account: Sign up with your email and password
+Add Pets: Register your pets with their basic information
+Medical Records: Input existing veterinary records and vaccination history
+Set Reminders: Configure care schedules and appointment notifications
+Daily Management: Track daily care activities and update as needed
+Monitor Health: Keep medical records updated and track your pet's health evolution
 
-### Docker
+🔮 Future Features (Planned)
 
-Alternatively, you can use [Docker](https://www.docker.com) to spin up this template locally. To do so, follow these steps:
+QR Code Integration: Quick access to pet medical records via QR codes
+Caregiver System: Temporary care delegation for travel or emergencies
+Veterinary Telemedicine: Online consultations with certified veterinarians
+Wearable Device Integration: Activity and health monitoring
+Community Features: Forums and local pet parent connections
+Marketplace: Pet products and services integration
+Insurance Integration: Pet health insurance management
 
-1. Follow [steps 1 and 2 from above](#development), the docker-compose file will automatically use the `.env` file in your project root
-1. Next run `docker-compose up`
-1. Follow [steps 4 and 5 from above](#development) to login and create your first admin user
+🤝 Contributing
+We welcome contributions to DailyPawie! Please follow these steps:
 
-That's it! The Docker instance will help you get up and running quickly while also standardizing the development environment across your teams.
+Fork the repository
+Create a feature branch (git checkout -b feature/amazing-feature)
+Commit your changes (git commit -m 'Add some amazing feature')
+Push to the branch (git push origin feature/amazing-feature)
+Open a Pull Request
 
-## Questions
+Development Guidelines
 
-If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).
+Follow the existing code style and formatting
+Write clear, descriptive commit messages
+Add appropriate tests for new features
+Update documentation as needed
+Ensure responsive design for mobile devices
+
+📄 License
+This project is licensed under the MIT License - see the LICENSE file for details.
+🙏 Acknowledgments
+
+ANFAAC Spain - Pet ownership statistics
+Veterindustria - Industry insights
+Dog API - Breed information data
+The growing community of responsible pet parents in Spain
+
+📞 Support
+If you encounter any issues or have questions:
+
+Check the Issues page
+Create a new issue with detailed description
+Contact the development team
+
+📊 Market Context
+DailyPawie addresses the growing pet care market in Spain, where:
+
+Nearly 6 pets exist for every child under 4 years old
+Dogs represent 30% of pets, cats 18%
+39% of pet owners consider themselves "pet parents"
+Rising awareness of animal rights and welfare
+
+
+Made with ❤️ for pet parents everywhere
