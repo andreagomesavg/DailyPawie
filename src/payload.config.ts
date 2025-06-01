@@ -2,6 +2,7 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { payloadCloudPlugin } from '@payloadcms/payload-cloud'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
+import { vercelBlobStorage } from '@payloadcms/storage-vercel-blob' // ← NUEVO
 import path from 'path'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
@@ -44,6 +45,16 @@ export default buildConfig({
   sharp,
   plugins: [
     payloadCloudPlugin(),
+    // ← NUEVO: Vercel Blob Storage
+    vercelBlobStorage({
+      enabled: true,
+      collections: {
+        media: true, // habilita para la colección 'media'
+      },
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+      clientUploads: true, // importante para evitar límites de 4.5MB
+      addRandomSuffix: true, // añade sufijo aleatorio a nombres de archivo
+    }),
     formBuilderPlugin({
       fields: {
         text: true,
@@ -505,9 +516,7 @@ export default buildConfig({
   ],
 })
 
-
-
-
+// ... resto de tu código (extractLexicalText, generateSEODescription)
 export function extractLexicalText(content: unknown): string {
   if (!content) return 'Automatically generated description';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -562,10 +571,10 @@ export function extractLexicalText(content: unknown): string {
     return nodeToText(content).trim();
   }
 }
+
 export function generateSEODescription(doc: { content?: unknown }): string {
   if (!doc.content) return 'Auto-generated Description';
   const text = extractLexicalText(doc.content);
   const cleanText = text.replace(/\s+/g, ' ').trim();
   return cleanText.length > 150 ? cleanText.substring(0, 147) + '...' : cleanText;
 }
-
