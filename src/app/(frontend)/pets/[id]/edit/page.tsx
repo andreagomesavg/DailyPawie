@@ -1,6 +1,7 @@
 import { MedicalRecord } from '@/utilities/MedicalRecord';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
+import Image from 'next/image'; // ✅ AÑADIDO: Next.js Image optimizado
 
 interface DailyCare {
   id: string;
@@ -30,6 +31,13 @@ interface Pet {
   photo?: {
     id: string;
     url: string;
+    alt?: string;
+    // ✅ AÑADIDO: Soporte para tamaños optimizados de Vercel Blob
+    sizes?: {
+      thumbnail?: { url: string };
+      medium?: { url: string };
+      large?: { url: string };
+    };
   };
   petOwner?: {
     id: string;
@@ -52,7 +60,7 @@ interface PageProps {
   }>;
 }
 
-// Helper function to get the base URL
+// ✅ OPTIMIZADO: Helper function mejorada para URLs
 function getBaseUrl(): string {
   // En producción (Vercel)
   if (process.env.VERCEL_URL) {
@@ -60,8 +68,8 @@ function getBaseUrl(): string {
   }
   
   // Variable de entorno personalizada
-  if (process.env.NEXT_PUBLIC_BASE_URL) {
-    return process.env.NEXT_PUBLIC_BASE_URL;
+  if (process.env.NEXT_PUBLIC_SERVER_URL) {
+    return process.env.NEXT_PUBLIC_SERVER_URL;
   }
   
   // Desarrollo local
@@ -123,6 +131,19 @@ async function getPet(petId: string): Promise<Pet> {
   }
 }
 
+// ✅ AÑADIDO: Helper para obtener la mejor URL de imagen
+function getOptimalImageUrl(photo: Pet['photo'], size: 'thumbnail' | 'medium' | 'large' = 'medium'): string | null {
+  if (!photo) return null;
+  
+  // Priorizar tamaños optimizados de Vercel Blob
+  if (photo.sizes && photo.sizes[size]) {
+    return photo.sizes[size].url;
+  }
+  
+  // Fallback a la URL original
+  return photo.url || null;
+}
+
 export default async function PetDetailPage({ params }: PageProps) {
   const { id: petId } = await params;
 
@@ -171,6 +192,10 @@ export default async function PetDetailPage({ params }: PageProps) {
     );
   }
 
+  // ✅ OPTIMIZADO: Obtener URLs de imagen optimizadas
+  const imageUrl = getOptimalImageUrl(pet.photo, 'large');
+  const thumbnailUrl = getOptimalImageUrl(pet.photo, 'thumbnail');
+
   return (
     <div className="min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -193,23 +218,32 @@ export default async function PetDetailPage({ params }: PageProps) {
           Back to Dashboard
         </a>
 
-        {/* Pet Header */}
+        {/* Pet Header - ✅ OPTIMIZADO */}
         <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
           <div className="md:flex">
-            {/* Pet Photo */}
-            <div className="md:w-1/3">
-              {pet.photo?.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={pet.photo.url}
-                  alt={pet.name}
-                  className="w-full h-64 md:h-full object-cover"
-                />
+            {/* Pet Photo - ✅ COMPLETAMENTE REESCRITO */}
+            <div className="md:w-1/3 relative">
+              {imageUrl ? (
+                <div className="relative w-full h-64 md:h-full min-h-[300px]">
+                  <Image
+                    src={imageUrl}
+                    alt={pet.photo?.alt || `Foto de ${pet.name}`}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    priority
+                    placeholder={thumbnailUrl ? "blur" : "empty"}
+                    blurDataURL={thumbnailUrl || undefined}
+                  />
+                </div>
               ) : (
-                <div className="w-full h-64 md:h-full bg-gray-200 flex items-center justify-center">
-                  <svg className="w-20 h-20 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                  </svg>
+                <div className="w-full h-64 md:h-full min-h-[300px] bg-gray-200 flex items-center justify-center">
+                  <div className="text-center">
+                    <svg className="mx-auto w-20 h-20 text-gray-400 mb-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-gray-500">No photo uploaded</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -221,45 +255,48 @@ export default async function PetDetailPage({ params }: PageProps) {
                 {isOwner && (
                   <a
                     href={`/pets/${petId}/edit`}
-                    className="inline-flex items-center px-4 py-2 text-lg font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a]"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
                   >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
                     Edit Pet
                   </a>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <span className="font-semibold text-gray-700">Species:</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="flex items-center">
+                  <span className="font-semibold text-gray-700 w-20">Species:</span>
                   <span className="ml-2 text-gray-900 capitalize">{pet.species}</span>
                 </div>
                 {pet.breed && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Breed:</span>
+                  <div className="flex items-center">
+                    <span className="font-semibold text-gray-700 w-20">Breed:</span>
                     <span className="ml-2 text-gray-900">{pet.breed}</span>
                   </div>
                 )}
                 {pet.sex && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Sex:</span>
+                  <div className="flex items-center">
+                    <span className="font-semibold text-gray-700 w-20">Gender:</span>
                     <span className="ml-2 text-gray-900 capitalize">{pet.sex}</span>
                   </div>
                 )}
                 {pet.age && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Age:</span>
-                    <span className="ml-2 text-gray-900">{pet.age} years</span>
+                  <div className="flex items-center">
+                    <span className="font-semibold text-gray-700 w-20">Age:</span>
+                    <span className="ml-2 text-gray-900">{pet.age} {pet.age === 1 ? 'year' : 'years'}</span>
                   </div>
                 )}
                 {pet.height && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Height:</span>
+                  <div className="flex items-center">
+                    <span className="font-semibold text-gray-700 w-20">Height:</span>
                     <span className="ml-2 text-gray-900">{pet.height} cm</span>
                   </div>
                 )}
                 {pet.weight && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Weight:</span>
+                  <div className="flex items-center">
+                    <span className="font-semibold text-gray-700 w-20">Weight:</span>
                     <span className="ml-2 text-gray-900">{pet.weight} kg</span>
                   </div>
                 )}
@@ -272,14 +309,18 @@ export default async function PetDetailPage({ params }: PageProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Medical Records Section */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Medical Records</h2>
+            <div className="flex items-center mb-4">
+              <svg className="w-6 h-6 text-[#3479ba] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h2 className="text-2xl font-semibold text-gray-900">Medical Records</h2>
+            </div>
             {pet.medicalRecord ? (
               <div className="space-y-4">
-                {/* You can add specific medical record components here */}
                 <p className="text-gray-600">Medical records available. Click to view details.</p>
                 <a
                   href={`/pets/${petId}/medical`}
-                  className="inline-flex items-center px-4 py-2 text-lg font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white"
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white transition-colors"
                 >
                   View Medical Records
                 </a>
@@ -290,7 +331,7 @@ export default async function PetDetailPage({ params }: PageProps) {
                 {isOwner && (
                   <a
                     href={`/pets/${petId}/medical`}
-                    className="inline-flex items-center px-4 py-2 text-lg font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a]"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
                   >
                     Add Medical Record
                   </a>
@@ -301,13 +342,18 @@ export default async function PetDetailPage({ params }: PageProps) {
 
           {/* Daily Care Section */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Daily Care</h2>
+            <div className="flex items-center mb-4">
+              <svg className="w-6 h-6 text-[#3479ba] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <h2 className="text-2xl font-semibold text-gray-900">Daily Care</h2>
+            </div>
             {pet.dailyCare ? (
               <div className="space-y-4">
                 <p className="text-gray-600">Daily care routine available.</p>
                 <a
                   href={`/pets/${petId}/daily-care`}
-                  className="inline-flex items-center px-4 py-2 text-lg font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white"
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white transition-colors"
                 >
                   View Daily Care
                 </a>
@@ -318,7 +364,7 @@ export default async function PetDetailPage({ params }: PageProps) {
                 {isOwner && (
                   <a
                     href={`/pets/${petId}/daily-care`}
-                    className="inline-flex items-center px-4 py-2 text-lg font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a]"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
                   >
                     Set Daily Care
                   </a>
@@ -329,13 +375,18 @@ export default async function PetDetailPage({ params }: PageProps) {
 
           {/* Reminders Section */}
           <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Reminders</h2>
+            <div className="flex items-center mb-4">
+              <svg className="w-6 h-6 text-[#3479ba] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h2 className="text-2xl font-semibold text-gray-900">Reminders</h2>
+            </div>
             {pet.reminders && pet.reminders.length > 0 ? (
               <div className="space-y-4">
                 <p className="text-gray-600">{pet.reminders.length} reminder(s) set</p>
                 <a
                   href={`/pets/${petId}/reminders`}
-                  className="inline-flex items-center px-4 py-2 text-lg font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white"
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white transition-colors"
                 >
                   View Reminders
                 </a>
@@ -346,7 +397,7 @@ export default async function PetDetailPage({ params }: PageProps) {
                 {isOwner && (
                   <a
                     href={`/pets/${petId}/reminders`}
-                    className="inline-flex items-center px-4 py-2 text-lg font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a]"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
                   >
                     Add Reminder
                   </a>

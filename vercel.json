@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "app/api/**/*.js": {
+      "maxDuration": 10
+    },
+    "app/api/media/**/*.js": {
+      "maxDuration": 15
+    }
+  },
+  "regions": ["cdg1"],
+  "framework": "nextjs"
+}
