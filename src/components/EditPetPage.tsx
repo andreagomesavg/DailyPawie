@@ -1,3 +1,4 @@
+
 "use client"
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -117,12 +118,12 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
     }));
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file size (opcional: limitar a 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        setError('Image size must be less than 10MB');
+      // Validate file size (límite más estricto: 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size must be less than 5MB');
         return;
       }
 
@@ -133,14 +134,36 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
       }
 
       setIsNewImageSelected(true);
-      setError(null); // Clear any previous errors
+      setError(null);
       
-      // Create a preview of the selected image
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        // ✅ OPTIMIZACIÓN: Comprimir imagen antes de mostrar preview
+        let processedFile = file;
+        
+        // Comprimir si es muy grande
+        if (file.size > 1024 * 1024) { // Si es mayor a 1MB
+          processedFile = await compressImage(file, 800, 0.8);
+          console.log(`Image compressed: ${file.size} -> ${processedFile.size} bytes`);
+        }
+        
+        // Create a preview of the processed image
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewImage(reader.result as string);
+        };
+        reader.readAsDataURL(processedFile);
+        
+        // Store the processed file for upload
+        if (e.target) {
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(processedFile);
+          e.target.files = dataTransfer.files;
+        }
+        
+      } catch (error) {
+        console.error('Error processing image:', error);
+        setError('Error processing image. Please try again.');
+      }
     } else {
       // If no file is selected, revert to the pet's original photo
       setIsNewImageSelected(false);
@@ -148,6 +171,46 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
       setPreviewImage(originalImage);
     }
   };
+
+// ✅ AÑADIR función de compresión al componente
+const compressImage = (file: File, maxWidth: number = 800, quality: number = 0.8): Promise<File> => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const img = typeof window !== "undefined" ? new window.Image() : ({} as HTMLImageElement);
+
+    img.onload = () => {
+      let { width, height } = img;
+      
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file);
+          }
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.src = URL.createObjectURL(file);
+  });
+};
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

@@ -39,7 +39,11 @@ export default buildConfig({
       connectionString: process.env.DATABASE_URI || '',
       ssl: {
         rejectUnauthorized: false
-      }
+      },
+      // ✅ OPTIMIZACIONES para evitar timeouts
+      max: 5, // máximo 5 conexiones concurrentes
+      idleTimeoutMillis: 30000, // 30 segundos
+      connectionTimeoutMillis: 10000, // 10 segundos timeout de conexión
     },
   }),
   sharp,
@@ -52,8 +56,9 @@ export default buildConfig({
         media: true, // habilita para la colección 'media'
       },
       token: process.env.BLOB_READ_WRITE_TOKEN,
-      clientUploads: true, // importante para evitar límites de 4.5MB
-      addRandomSuffix: true, // añade sufijo aleatorio a nombres de archivo
+      clientUploads: true, // ✅ CRÍTICO: evita timeouts procesando en cliente
+      addRandomSuffix: true,
+      cacheControlMaxAge: 365 * 24 * 60 * 60, // 1 año de cache
     }),
     formBuilderPlugin({
       fields: {
