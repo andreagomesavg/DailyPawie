@@ -49,7 +49,7 @@ export default buildConfig({
   sharp,
   plugins: [
     payloadCloudPlugin(),
-    // ← NUEVO: Vercel Blob Storage
+
     vercelBlobStorage({
       enabled: true,
       collections: {

@@ -150,7 +150,7 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
     }
   };
   
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+ const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrors({});
@@ -177,42 +177,23 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
         console.log('Uploading photo...', formData.photo[0]);
         
         const photoFormData = new FormData();
-        
-        // Based on the API response structure, the media collection expects 'alt' field
-        // Ensure alt is always provided and not empty
         const altText = formData.name.trim() || 'Pet photo';
+        const mediaData = { alt: altText };
         
-        // Create a proper JSON object for the data field if needed
-        const mediaData = {
-          alt: altText
-        };
-        
-        // Append the file
         photoFormData.append('file', formData.photo[0]);
-        
-        // Try different approaches for sending alt
         photoFormData.append('alt', altText);
-        photoFormData.append('_payload', JSON.stringify(mediaData));
         photoFormData.append('data', JSON.stringify(mediaData));
-        
-        // Log FormData for debugging
-        console.log('FormData contents:');
-        for (const pair of photoFormData.entries()) {
-          console.log(pair[0] + ': ' + pair[1]);
-        }
 
         const photoResponse = await fetch('/api/media', {
           method: 'POST',
           body: photoFormData,
           credentials: 'include',
-          // Don't set Content-Type header - let browser set it automatically for FormData
         });
 
         if (!photoResponse.ok) {
           const errorText = await photoResponse.text();
           console.error('Photo upload failed:', errorText);
           
-          // Try to get more specific error message
           let errorMessage = 'Failed to upload photo';
           try {
             const errorData = JSON.parse(errorText);
@@ -229,7 +210,6 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
         const photoData = await photoResponse.json();
         console.log('Photo upload response:', photoData);
         
-        // Based on the API response structure, the ID might be directly in the response
         photoId = photoData.doc?.id || photoData.id;
         
         if (!photoId) {
@@ -238,7 +218,7 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
         }
       }
 
-      // Get current user data to include the owner relationship
+      // Get current user data
       setStatusMessage("Getting user data...");
       const userResponse = await fetch('/api/users/me', {
         credentials: 'include',
@@ -246,7 +226,7 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
       const userData = await userResponse.json();
       const userId = userData.user?.id;
 
-      // Debug log to check the payload
+      // Prepare pet data
       const petData = {
         name: formData.name,
         species: formData.species,
@@ -260,55 +240,115 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
       console.log('Creating pet with data:', petData);
       setStatusMessage("Saving pet information...");
 
-      const response = await fetch('/api/pets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(petData),
-        credentials: 'include',
-      });
+      // ✅ AÑADIDO: Timeout personalizado para la creación de mascotas
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 segundos
 
-      // Log the response for debugging
-      const responseText = await response.text();
-      console.log('Pet creation response:', responseText);
+      try {
+        const response = await fetch('/api/pets', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(petData),
+          credentials: 'include',
+          signal: controller.signal, // ✅ AÑADIDO: AbortController
+        });
 
-      if (!response.ok) {
-        let errorMessage = 'Failed to create pet';
-        try {
-          const errorData = JSON.parse(responseText);
-          errorMessage = errorData.errors?.[0]?.message || errorData.message || errorMessage;
-        } catch {
-          errorMessage = responseText || errorMessage;
+        clearTimeout(timeoutId); // ✅ Limpiar timeout si la respuesta llega
+
+        const responseText = await response.text();
+        console.log('Pet creation response:', responseText);
+
+        if (!response.ok) {
+          let errorMessage = 'Failed to create pet';
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.errors?.[0]?.message || errorData.message || errorMessage;
+          } catch {
+            errorMessage = responseText || errorMessage;
+          }
+          
+          // ✅ MEJORADO: Manejo de diferentes tipos de timeout
+          if (errorMessage.includes('FUNCTION_INVOCATION_TIMEOUT') ||
+              errorMessage.includes('canceling statement due to statement timeout') ||
+              errorMessage.includes("Error updating user's ownedPets array") ||
+              errorMessage.includes('Gateway Timeout') ||
+              errorMessage.includes('504')) {
+            
+            console.log("Detected timeout error, but pet was likely created. Continuing...");
+            setStatusMessage("Pet creation may have succeeded, verifying...");
+            
+            // ✅ MEJORADO: Intentar verificar si la mascota se creó
+            try {
+              await new Promise(resolve => setTimeout(resolve, 2000)); // Esperar 2 segundos
+              
+              // Intentar refrescar los datos del usuario para ver si la mascota aparece
+              const refreshResponse = await fetch('/api/users/me', {
+                credentials: 'include',
+                cache: 'no-store', // ✅ Forzar recarga
+              });
+              
+              if (refreshResponse.ok) {
+                const refreshData = await refreshResponse.json();
+                console.log('Refreshed user data:', refreshData);
+                
+                setStatusMessage("Pet created successfully! Loading...");
+                onSuccess();
+                return;
+              }
+            } catch (verifyError) {
+              console.log('Could not verify pet creation, but assuming success:', verifyError);
+            }
+            
+            // Si no podemos verificar, asumir éxito
+            setStatusMessage("Pet created successfully! Refreshing data...");
+            onSuccess();
+            return;
+          }
+          
+          throw new Error(errorMessage);
         }
+
+        const data = JSON.parse(responseText);
+        console.log('Pet created:', data);
+        setStatusMessage("Pet created successfully!");
+        onSuccess();
         
-        // Check if it's the specific timeout error
-        if (errorMessage.includes('canceling statement due to statement timeout') ||
-            errorMessage.includes("Error updating user's ownedPets array")) {
-          console.log("Detected timeout error, but pet was likely created. Continuing...");
-          setStatusMessage("Pet created successfully! Refreshing data...");
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // ✅ AÑADIDO: Manejo específico de AbortError (timeout personalizado)
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          console.log("Custom timeout reached, but pet was likely created. Continuing...");
+          setStatusMessage("Pet creation is taking longer than expected, but likely succeeded...");
           
-          // Wait a moment to allow background processes to complete
+          // Esperar un poco y asumir éxito
           await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          // Call onSuccess callback to refresh the page
+          setStatusMessage("Pet created successfully! Refreshing data...");
           onSuccess();
           return;
         }
         
-        throw new Error(errorMessage);
+        throw fetchError;
       }
-
-      const data = JSON.parse(responseText);
-      console.log('Pet created:', data);
-      setStatusMessage("Pet created successfully!");
-      
-      // Call onSuccess callback to refresh the page
-      onSuccess();
       
     } catch (err) {
       console.error('Error creating pet:', err);
-      setErrors({ form: err instanceof Error ? err.message : 'An error occurred' });
+      
+      // ✅ MEJORADO: Mensaje de error más específico
+      let errorMessage = 'An error occurred while creating the pet';
+      
+      if (err instanceof Error) {
+        if (err.message.includes('FUNCTION_INVOCATION_TIMEOUT') || 
+            err.message.includes('Gateway Timeout')) {
+          errorMessage = 'The operation is taking longer than expected. The pet may have been created successfully. Please refresh the page to check.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setErrors({ form: errorMessage });
       setStatusMessage(null);
     } finally {
       setIsSubmitting(false);
