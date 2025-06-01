@@ -1,6 +1,7 @@
 "use client"
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image'; // ← AÑADIDO: Usar Next.js Image
 
 interface Pet {
   id: string;
@@ -14,6 +15,12 @@ interface Pet {
   photo?: {
     id: string;
     url: string;
+    alt?: string;
+    sizes?: {
+      thumbnail?: { url: string };
+      medium?: { url: string };
+      large?: { url: string };
+    };
   };
 }
 
@@ -24,6 +31,7 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isNewImageSelected, setIsNewImageSelected] = useState(false); // ← AÑADIDO
   const [formData, setFormData] = useState({
     name: '',
     species: '',
@@ -84,9 +92,10 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
           weight: petData.weight ? String(petData.weight) : '',
         });
         
-        // Set preview image if exists
-        if (petData.photo && petData.photo.url) {
-          setPreviewImage(petData.photo.url);
+        // Set preview image - prefer thumbnail for preview, fallback to main URL
+        if (petData.photo) {
+          const imageUrl = petData.photo.sizes?.thumbnail?.url || petData.photo.url;
+          setPreviewImage(imageUrl);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
@@ -111,6 +120,21 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validate file size (opcional: limitar a 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Image size must be less than 10MB');
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please select a valid image file');
+        return;
+      }
+
+      setIsNewImageSelected(true);
+      setError(null); // Clear any previous errors
+      
       // Create a preview of the selected image
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -119,7 +143,9 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
       reader.readAsDataURL(file);
     } else {
       // If no file is selected, revert to the pet's original photo
-      setPreviewImage(pet?.photo?.url || null);
+      setIsNewImageSelected(false);
+      const originalImage = pet?.photo?.sizes?.thumbnail?.url || pet?.photo?.url || null;
+      setPreviewImage(originalImage);
     }
   };
 
@@ -135,14 +161,14 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
   
       // Handle photo upload if a new photo was selected
       const photoInput = formElement.querySelector('input[name="photo"]') as HTMLInputElement;
-      if (photoInput.files && photoInput.files[0]) {
+      if (photoInput.files && photoInput.files[0] && isNewImageSelected) {
         console.log('Uploading new photo...', photoInput.files[0]);
         
         const photoFormData = new FormData();
         
         // Create a proper JSON object for the data field
         const mediaData = {
-          alt: formData.name.trim() || 'Pet photo'
+          alt: `Foto de ${formData.name.trim()}` || 'Pet photo'
         };
         
         // Append the file and metadata
@@ -159,7 +185,7 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
         if (!photoResponse.ok) {
           const errorText = await photoResponse.text();
           console.error('Photo upload failed:', errorText);
-          throw new Error('Failed to upload photo');
+          throw new Error('Failed to upload photo. Please try again.');
         }
   
         const photoData = await photoResponse.json();
@@ -167,19 +193,19 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
         
         if (!photoId) {
           console.error('No photo ID returned:', photoData);
-          throw new Error('No photo ID returned from upload');
+          throw new Error('Photo upload succeeded but no ID was returned');
         }
       }
   
       // Prepare pet data for update
       const petData = {
-        name: formData.name,
+        name: formData.name.trim(),
         species: formData.species,
-        breed: formData.breed || undefined,
+        breed: formData.breed?.trim() || undefined,
         sex: formData.sex || undefined,
         age: formData.age ? parseInt(formData.age) : undefined,
         height: formData.height ? parseInt(formData.height) : undefined,
-        weight: formData.weight ? parseInt(formData.weight) : undefined,
+        weight: formData.weight ? parseFloat(formData.weight) : undefined,
         photo: photoId || undefined
       };
   
@@ -206,18 +232,24 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
         throw new Error(errorMessage);
       }
   
-      // Redirect back to pet detail page
+      // Success! Redirect back to pet detail page
       router.push(`/pets/${params.id}`);
       
     } catch (err) {
       console.error('Error updating pet:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'An error occurred while updating the pet');
       setIsSubmitting(false);
     }
   };
 
   const handleCancel = () => {
     router.push(`/pets/${params.id}`);
+  };
+
+  // Helper function to get the best image URL for display
+  const getDisplayImageUrl = () => {
+    if (!pet?.photo) return null;
+    return pet.photo.sizes?.medium?.url || pet.photo.url;
   };
 
   if (loading) {
@@ -258,41 +290,58 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
           <h1 className="mb-6 text-2xl font-bold text-gray-900">Edit Pet Information</h1>
           
           <form onSubmit={handleSubmit} encType="multipart/form-data" className="space-y-6">
-            {/* Photo section */}
+            {/* Photo section - OPTIMIZADO */}
             <div>
-              <label className="block text-xl font-medium text-gray-700">Pet Photo</label>
-              <div className="flex items-center mt-2 space-x-6">
+              <label className="block text-xl font-medium text-gray-700 mb-2">Pet Photo</label>
+              <div className="flex items-center space-x-6">
                 {previewImage && (
-                  <div className="flex-shrink-0 w-24 h-24 overflow-hidden rounded-md">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={previewImage}
-                      alt="Pet preview"
-                      className="object-cover w-full h-full"
-                    />
+                  <div className="flex-shrink-0 w-32 h-32 overflow-hidden rounded-lg border border-gray-200">
+                    {isNewImageSelected ? (
+                      // For new selected images, use regular img tag
+                      <img
+                        src={previewImage}
+                        alt="Pet preview"
+                        className="object-cover w-full h-full"
+                      />
+                    ) : (
+                      // For existing pet photos, use Next.js Image for optimization
+                      <Image
+                        src={previewImage}
+                        alt={pet?.photo?.alt || `Foto de ${pet?.name}`}
+                        width={128}
+                        height={128}
+                        className="object-cover"
+                        priority
+                      />
+                    )}
                   </div>
                 )}
-                <div>
+                <div className="flex-1">
                   <input
                     type="file"
                     name="photo"
                     id="photo"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
                     onChange={handlePhotoChange}
-                    className="block w-full text-xl text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xl file:font-medium file:bg-blue-50 file:text-[#3479ba] hover:file:bg-[#3479ba]"
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-[#3479ba] hover:file:bg-blue-100 file:cursor-pointer"
                   />
-                  <p className="mt-1 text-xl text-gray-500">
-                    Only upload a new photo if you want to change the current one.
+                  <p className="mt-2 text-sm text-gray-500">
+                    JPG, PNG, WebP or GIF up to 10MB. Only upload if you want to change the current photo.
                   </p>
+                  {isNewImageSelected && (
+                    <p className="mt-1 text-sm text-green-600">
+                      ✓ New image selected
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Basic information */}
-            <div className="grid grid-cols-1 gap-6 mt-6 sm:grid-cols-2 gap-x-4 ">
+            <div className="grid grid-cols-1 gap-6 mt-6 sm:grid-cols-2">
               <div>
-                <label htmlFor="name" className="block text-xl font-medium text-gray-700">
-                  Pet Name
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                  Pet Name *
                 </label>
                 <input
                   type="text"
@@ -301,14 +350,14 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   required
                   value={formData.name}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                   autoComplete="off"
                 />
               </div>
 
               <div>
-                <label htmlFor="species" className="block text-xl font-medium text-gray-700">
-                  Species
+                <label htmlFor="species" className="block text-sm font-medium text-gray-700">
+                  Species *
                 </label>
                 <select
                   name="species"
@@ -316,8 +365,7 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   required
                   value={formData.species}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
-                  autoComplete="off"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                 >
                   <option value="">Select species</option>
                   <option value="dog">Dog</option>
@@ -327,7 +375,7 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
               </div>
 
               <div>
-                <label htmlFor="breed" className="block text-xl font-medium text-gray-700">
+                <label htmlFor="breed" className="block text-sm font-medium text-gray-700">
                   Breed
                 </label>
                 <input
@@ -336,13 +384,13 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   id="breed"
                   value={formData.breed}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                   autoComplete="off"
                 />
               </div>
 
               <div>
-                <label htmlFor="sex" className="block text-xl font-medium text-gray-700">
+                <label htmlFor="sex" className="block text-sm font-medium text-gray-700">
                   Gender
                 </label>
                 <select
@@ -350,17 +398,16 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   id="sex"
                   value={formData.sex}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
-                  autoComplete="off"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                 >
-                  <option value="">Select sex</option>
+                  <option value="">Select gender</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
               </div>
 
               <div>
-                <label htmlFor="age" className="block text-xl font-medium text-gray-700">
+                <label htmlFor="age" className="block text-sm font-medium text-gray-700">
                   Age (years)
                 </label>
                 <input
@@ -368,15 +415,16 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   name="age"
                   id="age"
                   min="0"
+                  max="50"
                   value={formData.age}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                   autoComplete="off"
                 />
               </div>
 
               <div>
-                <label htmlFor="height" className="block text-xl font-medium text-gray-700">
+                <label htmlFor="height" className="block text-sm font-medium text-gray-700">
                   Height (cm)
                 </label>
                 <input
@@ -386,13 +434,13 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   min="0"
                   value={formData.height}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                   autoComplete="off"
                 />
               </div>
 
-              <div>
-                <label htmlFor="weight" className="block text-xl font-medium text-gray-700">
+              <div className="sm:col-span-2">
+                <label htmlFor="weight" className="block text-sm font-medium text-gray-700">
                   Weight (kg)
                 </label>
                 <input
@@ -403,28 +451,43 @@ const EditPetPage = ({ params }: { params: { id: string } }) => {
                   step="0.1"
                   value={formData.weight}
                   onChange={handleInputChange}
-                  className="box-border block w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] sm:text-sm"
                   autoComplete="off"
                 />
               </div>
             </div>
 
-            {error && <div className="text-xl text-red-600">{error}</div>}
+            {error && (
+              <div className="p-3 text-sm text-red-700 bg-red-100 border border-red-300 rounded-md">
+                {error}
+              </div>
+            )}
 
-            <div className="flex justify-end space-x-3">
+            <div className="flex justify-end space-x-3 pt-6">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-4 py-2 text-xl font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                disabled={isSubmitting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#3479ba] disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#3479ba] disabled:bg-blue-400"
+                className="px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#3479ba] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'Saving...' : 'Save Changes'}
+                {isSubmitting ? (
+                  <span className="flex items-center">
+                    <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </span>
+                ) : (
+                  'Save Changes'
+                )}
               </button>
             </div>
           </form>
