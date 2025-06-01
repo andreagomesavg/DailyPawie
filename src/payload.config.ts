@@ -42,11 +42,10 @@ export default buildConfig({
         rejectUnauthorized: false
       },
       // 🔥 CONFIGURACIÓN ULTRA-OPTIMIZADA
-      max: 2, // SOLO 2 conexiones máximo - evita saturación
-      min: 1, // Mínimo 1 conexión siempre activa
-      idleTimeoutMillis: 15000, // 15 segundos - limpieza rápida
-      connectionTimeoutMillis: 5000, // 5 segundos timeout conexión
-      log: () => {}, // Sin logging para mejor performance
+      max: 1, // SOLO 1 CONEXIÓN - evita saturación total
+      min: 1, // 1 conexión siempre activa
+      idleTimeoutMillis: 10000, // 10 segundos - tiempo que una conexión puede estar idle
+      connectionTimeoutMillis: 5000, // 5 segundos - timeout para establecer conexión
     },
   }),
   sharp,
