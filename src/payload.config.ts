@@ -2,7 +2,6 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { payloadCloudPlugin } from '@payloadcms/payload-cloud'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { vercelBlobStorage } from '@payloadcms/storage-vercel-blob'
 import path from 'path'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
@@ -34,35 +33,20 @@ export default buildConfig({
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
-  // ✅ CONFIGURACIÓN AGRESIVA ANTI-TIMEOUT
+
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
       ssl: {
         rejectUnauthorized: false
       },
-      // 🔥 CONFIGURACIÓN ULTRA-OPTIMIZADA
-      max: 1, // SOLO 1 CONEXIÓN - evita saturación total
-      min: 1, // 1 conexión siempre activa
-      idleTimeoutMillis: 10000, // 10 segundos - tiempo que una conexión puede estar idle
-      connectionTimeoutMillis: 5000, // 5 segundos - timeout para establecer conexión
     },
   }),
   sharp,
   plugins: [
     payloadCloudPlugin(),
-    
-    // ✅ VERCEL BLOB STORAGE OPTIMIZADO
-    vercelBlobStorage({
-      enabled: true,
-      collections: {
-        media: true,
-      },
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-      clientUploads: true, // 🔥 CRÍTICO: Todo en cliente
-      addRandomSuffix: true,
-      cacheControlMaxAge: 365 * 24 * 60 * 60,
-    }),
+   
+   
 
     // ✅ FORM BUILDER SIMPLIFICADO (sin cambios complejos)
     formBuilderPlugin({
@@ -134,7 +118,7 @@ export default buildConfig({
       },
       defaultToEmail: 'valentina@cibernova.es',
       
-      // ✅ FORM OVERRIDES SIMPLIFICADOS
+
       formOverrides: {
         fields: ({ defaultFields }) => defaultFields,
         admin: {

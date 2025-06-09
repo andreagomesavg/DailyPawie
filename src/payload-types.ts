@@ -521,9 +521,7 @@ export interface Form {
         | {
             name: string;
             label?: string | null;
-            width?: number | null;
             required?: boolean | null;
-            LabelLink?: string | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'checkbox';
@@ -579,13 +577,7 @@ export interface Form {
         | {
             name: string;
             label?: string | null;
-            defaultValue?: string | null;
-            width?: number | null;
             required?: boolean | null;
-            /**
-             * Choose a predefined list or define custom options
-             */
-            selectType?: ('custom' | 'countries' | 'romaniaLocations' | 'phoneNumber') | null;
             options?:
               | {
                   label: string;
@@ -593,55 +585,6 @@ export interface Form {
                   id?: string | null;
                 }[]
               | null;
-            /**
-             * Show/hide other fields based on the selected radio option
-             */
-            conditionalFields?:
-              | {
-                  /**
-                   * Enter the value of the radio option that triggers these fields
-                   */
-                  radioValue?: string | null;
-                  fields?:
-                    | (
-                        | {
-                            name: string;
-                            label?: string | null;
-                            defaultValue?: string | null;
-                            width?: number | null;
-                            required?: boolean | null;
-                            id?: string | null;
-                            blockName?: string | null;
-                            blockType: 'conditionalText';
-                          }
-                        | {
-                            name: string;
-                            label?: string | null;
-                            defaultValue?: string | null;
-                            width?: number | null;
-                            required?: boolean | null;
-                            /**
-                             * Choose a predefined list or define custom options
-                             */
-                            selectType?: ('custom' | 'countries') | null;
-                            options?:
-                              | {
-                                  label: string;
-                                  value: string;
-                                  id?: string | null;
-                                }[]
-                              | null;
-                            displayType?: ('dropdown' | 'checkboxGroup' | 'radioGroup') | null;
-                            id?: string | null;
-                            blockName?: string | null;
-                            blockType: 'conditionalSelectType';
-                          }
-                      )[]
-                    | null;
-                  id?: string | null;
-                }[]
-              | null;
-            displayType?: ('dropdown' | 'checkboxGroup' | 'radioGroup') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'select';
@@ -732,25 +675,6 @@ export interface Form {
         id?: string | null;
       }[]
     | null;
-  /**
-   * Organize your form fields into sections
-   */
-  formSections?:
-    | {
-        title: string;
-        fields?:
-          | {
-              /**
-               * Enter the name of the form field to include in this section
-               */
-              fieldName?: string | null;
-              id?: string | null;
-            }[]
-          | null;
-        requiredSection?: boolean | null;
-        id?: string | null;
-      }[]
-    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -777,9 +701,6 @@ export interface FormSubmission {
  */
 export interface Redirect {
   id: number;
-  /**
-   * You will need to rebuild the website when changing this field.
-   */
   from: string;
   to?: {
     type?: ('reference' | 'custom') | null;
@@ -1326,9 +1247,7 @@ export interface FormsSelect<T extends boolean = true> {
           | {
               name?: T;
               label?: T;
-              width?: T;
               required?: T;
-              LabelLink?: T;
               id?: T;
               blockName?: T;
             };
@@ -1375,10 +1294,7 @@ export interface FormsSelect<T extends boolean = true> {
           | {
               name?: T;
               label?: T;
-              defaultValue?: T;
-              width?: T;
               required?: T;
-              selectType?: T;
               options?:
                 | T
                 | {
@@ -1386,48 +1302,6 @@ export interface FormsSelect<T extends boolean = true> {
                     value?: T;
                     id?: T;
                   };
-              conditionalFields?:
-                | T
-                | {
-                    radioValue?: T;
-                    fields?:
-                      | T
-                      | {
-                          conditionalText?:
-                            | T
-                            | {
-                                name?: T;
-                                label?: T;
-                                defaultValue?: T;
-                                width?: T;
-                                required?: T;
-                                id?: T;
-                                blockName?: T;
-                              };
-                          conditionalSelectType?:
-                            | T
-                            | {
-                                name?: T;
-                                label?: T;
-                                defaultValue?: T;
-                                width?: T;
-                                required?: T;
-                                selectType?: T;
-                                options?:
-                                  | T
-                                  | {
-                                      label?: T;
-                                      value?: T;
-                                      id?: T;
-                                    };
-                                displayType?: T;
-                                id?: T;
-                                blockName?: T;
-                              };
-                        };
-                    id?: T;
-                  };
-              displayType?: T;
               id?: T;
               blockName?: T;
             };
@@ -1482,19 +1356,6 @@ export interface FormsSelect<T extends boolean = true> {
         emailFrom?: T;
         subject?: T;
         message?: T;
-        id?: T;
-      };
-  formSections?:
-    | T
-    | {
-        title?: T;
-        fields?:
-          | T
-          | {
-              fieldName?: T;
-              id?: T;
-            };
-        requiredSection?: T;
         id?: T;
       };
   updatedAt?: T;
