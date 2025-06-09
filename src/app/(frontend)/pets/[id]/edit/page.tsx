@@ -1,23 +1,7 @@
-import { MedicalRecord } from '@/utilities/MedicalRecord';
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
-import Image from 'next/image'; // ✅ AÑADIDO: Next.js Image optimizado
-
-interface DailyCare {
-  id: string;
-  feeding: string;
-  exercise: string;
-  medications?: string;
-  notes?: string;
-}
-
-interface Reminder {
-  id: string;
-  title: string;
-  date: Date;
-  description?: string;
-  completed: boolean;
-}
+"use client"
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 
 interface Pet {
   id: string;
@@ -29,384 +13,527 @@ interface Pet {
   height?: number;
   weight?: number;
   photo?: {
-    id: string;
     url: string;
-    alt?: string;
-    // ✅ AÑADIDO: Soporte para tamaños optimizados de Vercel Blob
-    sizes?: {
-      thumbnail?: { url: string };
-      medium?: { url: string };
-      large?: { url: string };
-    };
   };
   petOwner?: {
     id: string;
+    name: string;
   } | string;
-  medicalRecord?: MedicalRecord | null;
-  dailyCare?: DailyCare;
-  reminders?: Reminder[];
 }
 
 interface User {
   user?: {
     id: string;
-    role: string;
+    roles: string;
   };
 }
 
 interface PageProps {
-  params: Promise<{
-    id: string;
-  }>;
+  params: Promise<{ id: string }>;
 }
 
-// ✅ OPTIMIZADO: Helper function mejorada para URLs
-function getBaseUrl(): string {
-  // En producción (Vercel)
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
+const EditPetPage = ({ params }: PageProps) => {
+  // Use React.use() to unwrap the Promise - same as your detail page
+  const { id: petId } = React.use(params);
   
-  // Variable de entorno personalizada
-  if (process.env.NEXT_PUBLIC_SERVER_URL) {
-    return process.env.NEXT_PUBLIC_SERVER_URL;
-  }
-  
-  // Desarrollo local
-  return 'http://localhost:3000';
-}
+  const router = useRouter();
+  const [pet, setPet] = useState<Pet | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-async function getUser(): Promise<User | null> {
-  try {
-    const cookieStore = cookies();
-    const baseUrl = getBaseUrl();
-    
-    const res = await fetch(`${baseUrl}/api/users/me`, {
-      method: 'GET',
-      headers: {
-        'Cookie': cookieStore.toString(),
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-    });
-    
-    if (!res.ok) {
-      if (res.status === 401) {
-        return null;
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    species: 'dog',
+    breed: '',
+    sex: '',
+    age: '',
+    height: '',
+    weight: ''
+  });
+
+  // Photo state
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // First fetch current user to check permissions - same pattern as detail page
+        const userResponse = await fetch('/api/users/me', {
+          credentials: 'include',
+        });
+        
+        if (!userResponse.ok) {
+          if (userResponse.status === 401) {
+            router.push('/login');
+            return;
+          }
+          throw new Error('Failed to fetch user data');
+        }
+        
+        const userData: User = await userResponse.json();
+        const userId = userData.user?.id;
+        
+        // Now fetch the pet details
+        const petResponse = await fetch(`/api/pets/${petId}`, {
+          credentials: 'include',
+        });
+        
+        if (!petResponse.ok) {
+          if (petResponse.status === 404) {
+            router.push('/pets');
+            return;
+          }
+          throw new Error('Failed to fetch pet details');
+        }
+        
+        const petData: Pet = await petResponse.json();
+        setPet(petData);
+        
+        // Set form data with existing pet data
+        setFormData({
+          name: petData.name || '',
+          species: petData.species || 'dog',
+          breed: petData.breed || '',
+          sex: petData.sex || '',
+          age: petData.age?.toString() || '',
+          height: petData.height?.toString() || '',
+          weight: petData.weight?.toString() || ''
+        });
+        
+        // Check if current user is the pet owner
+        if (petData.petOwner) {
+          const ownerId = typeof petData.petOwner === 'object' ? petData.petOwner.id : petData.petOwner;
+          const hasPermission = ownerId === userId || userData.user?.roles === 'admin';
+          setIsOwner(hasPermission);
+          
+          if (!hasPermission) {
+            router.push(`/pets/${petId}`);
+            return;
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
       }
-      console.error('Failed to fetch user:', res.status, res.statusText);
-      throw new Error(`Failed to fetch user data: ${res.status}`);
+    };
+    
+    if (petId) {
+      fetchData();
     }
-    
-    return res.json();
-  } catch (error) {
-    console.error('Error in getUser:', error);
-    return null;
-  }
-}
+  }, [petId, router]);
 
-async function getPet(petId: string): Promise<Pet> {
-  try {
-    const cookieStore = cookies();
-    const baseUrl = getBaseUrl();
-    
-    const res = await fetch(`${baseUrl}/api/pets/${petId}`, {
-      method: 'GET',
-      headers: {
-        'Cookie': cookieStore.toString(),
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-    });
-    
-    if (!res.ok) {
-      console.error('Failed to fetch pet:', res.status, res.statusText);
-      throw new Error(`Failed to fetch pet details: ${res.status}`);
+  // Cleanup photo preview URL when component unmounts
+  useEffect(() => {
+    return () => {
+      if (photoPreview && photoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedPhoto(file);
+      
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
-    
-    return res.json();
-  } catch (error) {
-    console.error('Error in getPet:', error);
-    throw error;
-  }
-}
+  };
 
-// ✅ AÑADIDO: Helper para obtener la mejor URL de imagen
-function getOptimalImageUrl(photo: Pet['photo'], size: 'thumbnail' | 'medium' | 'large' = 'medium'): string | null {
-  if (!photo) return null;
-  
-  // Priorizar tamaños optimizados de Vercel Blob
-  if (photo.sizes && photo.sizes[size]) {
-    return photo.sizes[size].url;
-  }
-  
-  // Fallback a la URL original
-  return photo.url || null;
-}
+  const removePhoto = () => {
+    setSelectedPhoto(null);
+    setPhotoPreview(null);
+    // Reset the file input
+    const fileInput = document.getElementById('photo') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
 
-export default async function PetDetailPage({ params }: PageProps) {
-  const { id: petId } = await params;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pet) return;
 
-  if (!petId) {
+    setSaving(true);
+    setError(null);
+
+    try {
+      let photoId = null;
+
+      // Handle photo upload first (if a new photo was selected)
+      if (selectedPhoto) {
+        try {
+          setError(null);
+          
+          // Create descriptive alt text
+          const altText = `Photo of ${formData.name} - Updated ${new Date().toISOString()}`;
+          
+          // Upload photo to media endpoint first
+          const photoFormData = new FormData();
+          photoFormData.append('file', selectedPhoto);
+          photoFormData.append('alt', altText);
+          
+          const photoResponse = await fetch('/api/media', {
+            method: 'POST',
+            body: photoFormData,
+            credentials: 'include',
+          });
+
+          if (!photoResponse.ok) {
+            let errorText;
+            try {
+              errorText = await photoResponse.text();
+            } catch (e) {
+              errorText = 'Could not read response text';
+            }
+            throw new Error(`Photo upload failed: ${photoResponse.status} - ${errorText}`);
+          }
+
+          const photoResult = await photoResponse.json();
+          photoId = photoResult.doc?.id || photoResult.id;
+          
+          if (!photoId) {
+            console.error('No photo ID in response:', photoResult);
+            throw new Error('Photo upload completed but no ID was returned');
+          }
+          
+          console.log('✅ Photo uploaded successfully with ID:', photoId);
+        } catch (photoError: any) {
+          console.error('💥 Photo upload error:', photoError);
+          throw new Error(`Failed to upload photo: ${photoError.message}`);
+        }
+      }
+
+      // Prepare pet update data (using JSON, not FormData)
+      const updateData: any = {
+        name: formData.name,
+        species: formData.species,
+      };
+
+      // Only include optional fields if they have values
+      if (formData.breed) updateData.breed = formData.breed;
+      if (formData.sex) updateData.sex = formData.sex;
+      if (formData.age) updateData.age = parseInt(formData.age);
+      if (formData.height) updateData.height = parseFloat(formData.height);
+      if (formData.weight) updateData.weight = parseFloat(formData.weight);
+      
+      // Add photo ID if we uploaded a new photo
+      if (photoId) {
+        updateData.photo = photoId;
+      }
+
+      // Update pet with JSON data (not FormData)
+      const response = await fetch(`/api/pets/${petId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to update pet');
+      }
+
+      // Success - redirect to pet details
+      router.push(`/pets/${petId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while saving');
+      setSaving(false);
+    }
+  };
+
+  const handleBack = () => {
+    router.push(`/pets/${petId}`);
+  };
+
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-red-600">Invalid pet ID</div>
+        <div className="w-12 h-12 border-b-2 rounded-full border-[#3479ba] animate-spin"></div>
       </div>
     );
   }
 
-  let userData: User | null = null;
-  let pet: Pet | null = null;
-  let isOwner = false;
-  let error: string | null = null;
-
-  try {
-    userData = await getUser();
-    if (!userData) {
-      redirect('/login');
-    }
-    pet = await getPet(petId);
-
-    if (pet && pet.petOwner) {
-      const ownerId = typeof pet.petOwner === 'object' ? pet.petOwner.id : pet.petOwner;
-      isOwner = ownerId === userData.user?.id || userData.user?.role === 'admin';
-    }
-  } catch (err) {
-    console.error('Error in PetDetailPage:', err);
-    error = err instanceof Error ? err.message : 'An error occurred';
-  }
-
-  if (error || !pet) {
+  if (error && !pet) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="text-red-600 mb-4">Error: {error || 'Pet not found'}</div>
-          <a
-            href="/my-dashboard"
-            className="px-4 py-2 text-white bg-[#3479ba] rounded-md hover:bg-[#2a5d8a]"
-          >
-            Back to Dashboard
-          </a>
+      <div className="min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-gray-900 mb-4">
+                Error Loading Pet
+              </h1>
+              <p className="text-gray-600 mb-6">{error}</p>
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={() => router.push('/my-dashboard')}
+                  className="px-4 py-2 text-white bg-[#3479ba] rounded-md hover:bg-[#2a5d8a] transition-colors"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ✅ OPTIMIZADO: Obtener URLs de imagen optimizadas
-  const imageUrl = getOptimalImageUrl(pet.photo, 'large');
-  const thumbnailUrl = getOptimalImageUrl(pet.photo, 'thumbnail');
+  if (!pet || !isOwner) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-600">Access denied or pet not found</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Back button */}
-        <a
-          href="/my-dashboard"
-          className="flex items-center gap-2 z-10 px-4 py-1 mt-2 rounded-md font-normal text-lg 
-                     text-white bg-[#001e4c] 
-                     border-2 border-transparent
-                     hover:bg-[#f4f6f5] hover:text-[#001e4c] hover:border-[#001e4c]
-                     transition-all duration-300 hover:cursor-pointer my-4 opacity-90"
-        >
-          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Back to Dashboard
-        </a>
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-lg shadow p-6">
+          {/* Back button */}
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-2 mb-6 text-[#3479ba] hover:text-[#2a5d8a] transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Back to Pet Details
+          </button>
 
-        {/* Pet Header - ✅ OPTIMIZADO */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-          <div className="md:flex">
-            {/* Pet Photo - ✅ COMPLETAMENTE REESCRITO */}
-            <div className="md:w-1/3 relative">
-              {imageUrl ? (
-                <div className="relative w-full h-64 md:h-full min-h-[300px]">
-                  <Image
-                    src={imageUrl}
-                    alt={pet.photo?.alt || `Foto de ${pet.name}`}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    priority
-                    placeholder={thumbnailUrl ? "blur" : "empty"}
-                    blurDataURL={thumbnailUrl || undefined}
-                  />
+          <h1 className="text-[#001e4c] pt-2 font-bold leading-none text-left text-[36px] tracking-tight mb-8">
+            Edit {pet.name}
+          </h1>
+
+          {/* Error message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-red-600">{error}</p>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Photo Upload Section */}
+            <div>
+              <label className="block text-xl font-medium text-gray-700 mb-4">
+                Pet Photo
+              </label>
+              
+              <div className="flex flex-col space-y-4">
+                {/* Current Photo or Preview */}
+                <div className="flex items-center space-x-4">
+                  {photoPreview ? (
+                    // Show new photo preview
+                    <div className="relative">
+                      <img
+                        src={photoPreview}
+                        alt="New photo preview"
+                        className="w-32 h-32 object-cover rounded-lg border-2 border-[#3479ba]"
+                      />
+                      <button
+                        type="button"
+                        onClick={removePhoto}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-sm hover:bg-red-600"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : pet.photo?.url ? (
+                    // Show current photo
+                    <div className="relative">
+                      <img
+                        src={pet.photo.url}
+                        alt={pet.name}
+                        className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300"
+                      />
+                      <div className="absolute -bottom-2 -right-2 bg-gray-800 text-white text-xs px-2 py-1 rounded">
+                        Current
+                      </div>
+                    </div>
+                  ) : (
+                    // No photo placeholder
+                    <div className="w-32 h-32 bg-gray-200 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
+                      <span className="text-gray-500 text-sm text-center">No photo</span>
+                    </div>
+                  )}
+                  
+                  {/* Upload button */}
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      id="photo"
+                      accept="image/*"
+                      onChange={handlePhotoChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="photo"
+                      className="cursor-pointer inline-flex items-center px-4 py-2 border border-[#3479ba] rounded-md shadow-sm text-xl font-medium text-[#3479ba] bg-white hover:bg-[#3479ba] hover:text-white transition-colors"
+                    >
+                      {photoPreview ? 'Change Photo' : pet.photo?.url ? 'Update Photo' : 'Add Photo'}
+                    </label>
+                    <p className="mt-2 text-sm text-gray-500">
+                      JPG, PNG, GIF up to 10MB
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                <div className="w-full h-64 md:h-full min-h-[300px] bg-gray-200 flex items-center justify-center">
-                  <div className="text-center">
-                    <svg className="mx-auto w-20 h-20 text-gray-400 mb-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                    </svg>
-                    <p className="text-gray-500">No photo uploaded</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Pet Info */}
-            <div className="md:w-2/3 p-6">
-              <div className="flex justify-between items-start mb-4">
-                <h1 className="text-3xl font-bold text-gray-900">{pet.name}</h1>
-                {isOwner && (
-                  <a
-                    href={`/pets/${petId}/edit`}
-                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit Pet
-                  </a>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center">
-                  <span className="font-semibold text-gray-700 w-20">Species:</span>
-                  <span className="ml-2 text-gray-900 capitalize">{pet.species}</span>
-                </div>
-                {pet.breed && (
-                  <div className="flex items-center">
-                    <span className="font-semibold text-gray-700 w-20">Breed:</span>
-                    <span className="ml-2 text-gray-900">{pet.breed}</span>
-                  </div>
-                )}
-                {pet.sex && (
-                  <div className="flex items-center">
-                    <span className="font-semibold text-gray-700 w-20">Gender:</span>
-                    <span className="ml-2 text-gray-900 capitalize">{pet.sex}</span>
-                  </div>
-                )}
-                {pet.age && (
-                  <div className="flex items-center">
-                    <span className="font-semibold text-gray-700 w-20">Age:</span>
-                    <span className="ml-2 text-gray-900">{pet.age} {pet.age === 1 ? 'year' : 'years'}</span>
-                  </div>
-                )}
-                {pet.height && (
-                  <div className="flex items-center">
-                    <span className="font-semibold text-gray-700 w-20">Height:</span>
-                    <span className="ml-2 text-gray-900">{pet.height} cm</span>
-                  </div>
-                )}
-                {pet.weight && (
-                  <div className="flex items-center">
-                    <span className="font-semibold text-gray-700 w-20">Weight:</span>
-                    <span className="ml-2 text-gray-900">{pet.weight} kg</span>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Content Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Medical Records Section */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center mb-4">
-              <svg className="w-6 h-6 text-[#3479ba] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <h2 className="text-2xl font-semibold text-gray-900">Medical Records</h2>
+            <div>
+              <label htmlFor="name" className="block text-xl font-medium text-gray-700">
+                Pet Name *
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                required
+                value={formData.name}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              />
             </div>
-            {pet.medicalRecord ? (
-              <div className="space-y-4">
-                <p className="text-gray-600">Medical records available. Click to view details.</p>
-                <a
-                  href={`/pets/${petId}/medical`}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white transition-colors"
-                >
-                  View Medical Records
-                </a>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No medical records yet</p>
-                {isOwner && (
-                  <a
-                    href={`/pets/${petId}/medical`}
-                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
-                  >
-                    Add Medical Record
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
+            
+            <div>
+              <label htmlFor="species" className="block text-xl font-medium text-gray-700">
+                Species *
+              </label>
+              <select
+                id="species"
+                name="species"
+                required
+                value={formData.species}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              >
+                <option value="dog">Dog</option>
+                <option value="cat">Cat</option>
+                <option value="another">Another</option>
+              </select>
+            </div>
 
-          {/* Daily Care Section */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center mb-4">
-              <svg className="w-6 h-6 text-[#3479ba] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-              </svg>
-              <h2 className="text-2xl font-semibold text-gray-900">Daily Care</h2>
+            <div>
+              <label htmlFor="breed" className="block text-xl font-medium text-gray-700">
+                Breed
+              </label>
+              <input
+                type="text"
+                id="breed"
+                name="breed"
+                value={formData.breed}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              />
             </div>
-            {pet.dailyCare ? (
-              <div className="space-y-4">
-                <p className="text-gray-600">Daily care routine available.</p>
-                <a
-                  href={`/pets/${petId}/daily-care`}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white transition-colors"
-                >
-                  View Daily Care
-                </a>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No daily care routine set</p>
-                {isOwner && (
-                  <a
-                    href={`/pets/${petId}/daily-care`}
-                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
-                  >
-                    Set Daily Care
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
 
-          {/* Reminders Section */}
-          <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
-            <div className="flex items-center mb-4">
-              <svg className="w-6 h-6 text-[#3479ba] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h2 className="text-2xl font-semibold text-gray-900">Reminders</h2>
+            <div>
+              <label htmlFor="sex" className="block text-xl font-medium text-gray-700">
+                Sex
+              </label>
+              <select
+                id="sex"
+                name="sex"
+                value={formData.sex}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              >
+                <option value="">Select sex</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
             </div>
-            {pet.reminders && pet.reminders.length > 0 ? (
-              <div className="space-y-4">
-                <p className="text-gray-600">{pet.reminders.length} reminder(s) set</p>
-                <a
-                  href={`/pets/${petId}/reminders`}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-[#3479ba] border border-[#3479ba] rounded-md hover:bg-[#3479ba] hover:text-white transition-colors"
-                >
-                  View Reminders
-                </a>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No reminders set</p>
-                {isOwner && (
-                  <a
-                    href={`/pets/${petId}/reminders`}
-                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors"
-                  >
-                    Add Reminder
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
+
+            <div>
+              <label htmlFor="age" className="block text-xl font-medium text-gray-700">
+                Age (years)
+              </label>
+              <input
+                type="number"
+                id="age"
+                name="age"
+                min="0"
+                value={formData.age}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="height" className="block text-xl font-medium text-gray-700">
+                Height (cm)
+              </label>
+              <input
+                type="number"
+                id="height"
+                name="height"
+                min="0"
+                step="0.1"
+                value={formData.height}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="weight" className="block text-xl font-medium text-gray-700">
+                Weight (kg)
+              </label>
+              <input
+                type="number"
+                id="weight"
+                name="weight"
+                min="0"
+                step="0.1"
+                value={formData.weight}
+                onChange={handleInputChange}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba] text-xl"
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-4">
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={saving}
+                className="px-4 py-2 text-xl text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-4 py-2 text-xl text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2a5d8a] transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default EditPetPage;

@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useState, useCallback } from 'react'; // ✅ Agregado useCallback
+import React, { useEffect, useState, useCallback } from 'react'; 
 import { useRouter } from 'next/navigation';
 import AllRemindersComponent from '@/components/AllPetReminders';
 import {League_Spartan} from "next/font/google"
@@ -108,7 +108,6 @@ interface User {
   caredPets?: Array<Pet | string>;
 }
 
-// Pet Creation Form Component with Validation
 const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSuccess: () => void }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -121,8 +120,6 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
     age: '',
   });
   const [errors, setErrors] = useState<ValidationErrors>({});
-
-   
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -149,174 +146,284 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
       });
     }
   };
-  
- const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  setIsSubmitting(true);
-  setErrors({});
-  setStatusMessage("Creating your pet...");
 
-  // Validate form data
-  const validation = validatePetForm(formData);
-  
-  if (!validation.success) {
-    setErrors(validation.errors || {});
-    setIsSubmitting(false);
-    setStatusMessage(null);
-    return;
-  }
+  // Enhanced file validation function
+  const validateFile = (file: File) => {
+    const errors = [];
+    
+    // Size check (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      errors.push('File size must be less than 5MB');
+    }
+    
+    // Type check
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      errors.push('File must be JPG, PNG, or WebP format');
+    }
+    
+    // Additional checks
+    if (file.name.length > 255) {
+      errors.push('Filename too long');
+    }
+    
+    if (file.size === 0) {
+      errors.push('File appears to be empty');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
 
-  try {
-    let photoId = null;
-
-    // 🔥 PASO 1: SUBIR FOTO (YA FUNCIONA)
-    if (formData.photo && formData.photo[0]) {
-      setStatusMessage("Uploading photo...");
-      
-      const photoFormData = new FormData();
-      const altText = formData.name.trim() || 'Pet photo';
-      
-      photoFormData.append('file', formData.photo[0]);
-      photoFormData.append('alt', altText);
-      photoFormData.append('data', JSON.stringify({ alt: altText }));
-
-      const photoResponse = await fetch('/api/media', {
+  // Simple photo upload - reverting to basic local version
+  const uploadPhoto = async (file: File, altText: string) => {
+    console.log('Uploading file:', {
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('alt', altText);
+    
+    // Debug what we're sending
+    console.log('FormData contents:');
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}:`, value);
+    }
+    
+    try {
+      const response = await fetch('/api/media', {
         method: 'POST',
-        body: photoFormData,
+        body: formData,
         credentials: 'include',
       });
 
-      if (!photoResponse.ok) {
-        throw new Error('Failed to upload photo');
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        let errorText;
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          errorText = 'Could not read response text';
+        }
+        
+        console.error('Upload failed details:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseText: errorText,
+          url: response.url,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        
+        // Try to parse as JSON for better error info
+        if (errorText) {
+          try {
+            const errorObj = JSON.parse(errorText);
+            console.error('Parsed error object:', errorObj);
+            
+            // Check for validation errors
+            if (errorObj.errors && errorObj.errors[0]?.data?.errors) {
+              const validationErrors = errorObj.errors[0].data.errors;
+              const errorMessages = validationErrors.map((err: any) => `${err.label}: ${err.message}`).join(', ');
+              throw new Error(`Validation failed: ${errorMessages}`);
+            }
+          } catch (parseError) {
+            console.log('Could not parse error as JSON');
+          }
+        }
+        
+        throw new Error(`Upload failed: ${response.status} - ${errorText || 'No error details'}`);
       }
 
-      const photoData = await photoResponse.json();
-      photoId = photoData.doc?.id || photoData.id;
+      const data = await response.json();
+      console.log('Upload successful:', data);
+      return data;
       
-      if (!photoId) {
-        throw new Error('Photo upload failed - no ID returned');
-      }
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
     }
+  };
+  
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setErrors({});
+    setStatusMessage("Creating your pet...");
 
-    // 🔥 PASO 2: OBTENER USER ID
-    setStatusMessage("Preparing pet data...");
-    const userResponse = await fetch('/api/users/me', {
-      credentials: 'include',
-    });
-    const userData = await userResponse.json();
-    const userId = userData.user?.id;
-
-    // 🔥 PASO 3: CREAR MASCOTA CON TIMEOUT AGRESIVO
-    const petData = {
-      name: formData.name.trim(),
-      species: formData.species,
-      breed: formData.breed?.trim() || undefined,
-      sex: formData.sex || undefined,
-      age: formData.age ? parseInt(formData.age) : undefined,
-      photo: photoId || undefined, 
-      petOwner: userId 
-    };
-
-    console.log('Creating pet with data:', petData);
-    setStatusMessage("Saving pet...");
-
-    // ✅ CONFIGURACIÓN ULTRA-AGRESIVA PARA EVITAR TIMEOUTS
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-      console.log('🔥 TIMEOUT REACHED - ASSUMING SUCCESS');
-    }, 15000); // 15 segundos - más agresivo
-
-    let createSuccess = false;
+    // Validate form data
+    const validation = validatePetForm(formData);
+    
+    if (!validation.success) {
+      setErrors(validation.errors || {});
+      setIsSubmitting(false);
+      setStatusMessage(null);
+      return;
+    }
 
     try {
-      const response = await fetch('/api/pets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(petData),
-        credentials: 'include',
-        signal: controller.signal,
-      });
+      let photoId = null;
 
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const responseData = await response.json();
-        console.log('✅ Pet created successfully:', responseData);
-        createSuccess = true;
-      } else {
-        const errorText = await response.text();
-        console.log('❌ Response not OK:', errorText);
+      if (formData.photo && formData.photo[0]) {
+        const file = formData.photo[0];
         
-        // 🔥 ASUMIR ÉXITO EN CASOS ESPECÍFICOS
-        if (response.status === 504 || 
-            errorText.includes('TIMEOUT') || 
-            errorText.includes('Gateway Timeout')) {
-          console.log('🔥 TIMEOUT DETECTED - ASSUMING SUCCESS');
-          createSuccess = true;
-        } else {
-          throw new Error(errorText || 'Failed to create pet');
+        // Create a more descriptive alt text with pet name and timestamp ID
+        const timestamp = Date.now();
+        const petName = formData.name.trim() || 'Pet';
+        const altText = `Photo of ${petName} - ID: ${timestamp}`;
+        
+        setStatusMessage("Uploading photo...");
+        
+        // Basic file validation
+        if (file.size > 5 * 1024 * 1024) {
+          setErrors({ photo: 'File size must be less than 5MB' });
+          setIsSubmitting(false);
+          setStatusMessage(null);
+          return;
+        }
+        
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+          setErrors({ photo: 'File must be JPG, PNG, or WebP format' });
+          setIsSubmitting(false);
+          setStatusMessage(null);
+          return;
+        }
+        
+        try {
+          const uploadResult = await uploadPhoto(file, altText);
+          photoId = uploadResult.doc?.id || uploadResult.id;
+          
+          if (!photoId) {
+            console.error('No photo ID in response:', uploadResult);
+            throw new Error('Photo upload completed but no ID was returned');
+          }
+          
+          console.log('✅ Photo uploaded successfully with ID:', photoId);
+        } catch (photoError: any) {
+          console.error('💥 Photo upload error:', photoError);
+          throw new Error(`Failed to upload photo: ${photoError.message}`);
         }
       }
-    } catch (fetchError: any) {
-      clearTimeout(timeoutId);
+
+      setStatusMessage("Preparing pet data...");
+      const userResponse = await fetch('/api/users/me', {
+        credentials: 'include',
+      });
       
-      // 🔥 MANEJAR TIMEOUTS COMO ÉXITO
-      if (fetchError.name === 'AbortError' || 
-          fetchError.message?.includes('aborted') ||
-          fetchError.message?.includes('timeout')) {
-        console.log('🔥 FETCH TIMEOUT - ASSUMING SUCCESS');
-        createSuccess = true;
-      } else {
-        console.error('❌ Real error:', fetchError);
+      if (!userResponse.ok) {
+        throw new Error('Failed to get user information');
+      }
+      
+      const userData = await userResponse.json();
+      const userId = userData.user?.id;
+
+      if (!userId) {
+        throw new Error('Could not get user ID');
+      }
+
+      const petData = {
+        name: formData.name.trim(),
+        species: formData.species,
+        breed: formData.breed?.trim() || undefined,
+        sex: formData.sex || undefined,
+        age: formData.age ? parseInt(formData.age) : undefined,
+        photo: photoId || undefined, 
+        petOwner: userId 
+      };
+
+      console.log('Creating pet with data:', petData);
+      setStatusMessage("Saving pet...");
+
+      try {
+        const response = await fetch('/api/pets', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(petData),
+          credentials: 'include',
+        });
+
+        console.log('Pet creation response status:', response.status);
+        console.log('Pet creation response headers:', Object.fromEntries(response.headers.entries()));
+
+        if (response.ok) {
+          const responseData = await response.json();
+          console.log('✅ Pet created successfully:', responseData);
+          
+          setStatusMessage("Pet created successfully! 🎉");
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          onSuccess();
+          return;
+        } else {
+          // Get detailed error information
+          let errorText;
+          try {
+            errorText = await response.text();
+          } catch (e) {
+            errorText = 'Could not read error response';
+          }
+          
+          console.error('❌ Pet creation failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            responseText: errorText,
+            url: response.url,
+            headers: Object.fromEntries(response.headers.entries())
+          });
+          
+          // Try to parse error as JSON for better error message
+          let errorMessage = `Failed to create pet: ${response.status}`;
+          if (errorText) {
+            try {
+              const errorObj = JSON.parse(errorText);
+              console.error('Parsed error object:', errorObj);
+              
+              if (errorObj.errors && errorObj.errors[0]?.data?.errors) {
+                const validationErrors = errorObj.errors[0].data.errors;
+                const errorMessages = validationErrors.map((err: any) => `${err.label}: ${err.message}`).join(', ');
+                errorMessage = `Validation failed: ${errorMessages}`;
+              } else if (errorObj.message) {
+                errorMessage = errorObj.message;
+              } else {
+                errorMessage = errorText;
+              }
+            } catch (parseError) {
+              errorMessage = errorText;
+            }
+          }
+          
+          throw new Error(errorMessage);
+        }
+      } catch (fetchError: any) {
+        console.error('❌ Pet creation fetch error:', fetchError);
         throw fetchError;
       }
-    }
 
-    // 🔥 SI LLEGAMOS AQUÍ, ASUMIR ÉXITO
-    if (createSuccess) {
-      setStatusMessage("Pet created successfully! 🎉");
+    } catch (err: any) {
+      console.error('💥 Final error:', err);
       
-      // Esperar un poco para que el usuario vea el mensaje
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const errorMessage = err.message || err.toString();
+      console.error('Error message:', errorMessage);
       
-      // Llamar onSuccess para refrescar la página
-      onSuccess();
-      return;
+      // Show the actual error to the user
+      setErrors({ 
+        form: errorMessage.includes('upload') 
+          ? 'Failed to upload photo. Please try again.' 
+          : `Failed to create pet: ${errorMessage}`
+      });
+      setStatusMessage(null);
+    } finally {
+      setIsSubmitting(false);
     }
-
-  } catch (err: any) {
-    console.error('💥 Final error:', err);
-    
-    // 🔥 ÚLTIMO RECURSO - REVISAR SI EL ERROR ES ESPERADO
-    const errorMessage = err.message || err.toString();
-    
-    if (errorMessage.includes('TIMEOUT') || 
-        errorMessage.includes('Gateway') ||
-        errorMessage.includes('canceling statement') ||
-        errorMessage.includes('504')) {
-      
-      console.log('🔥 EXPECTED TIMEOUT - TREATING AS SUCCESS');
-      setStatusMessage("Pet creation completed! 🎉");
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      onSuccess();
-      return;
-    }
-
-    // Solo mostrar error si es realmente inesperado
-    setErrors({ 
-      form: errorMessage.includes('upload') 
-        ? 'Failed to upload photo. Please try again.' 
-        : 'Something went wrong. Please try again.'
-    });
-    setStatusMessage(null);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   return (
     <div className="p-6 bg-white rounded-lg shadow">
@@ -335,7 +442,7 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
             type="file" 
             name="photo" 
             id="photo" 
-            accept="image/*"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
             onChange={handleChange}
             className={`box-border block w-full px-3 py-2 mt-1 border ${errors.photo ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-[#3479ba] focus:border-[#3479ba]`}
             autoComplete="off"
@@ -346,6 +453,9 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
               <p className="my-0 text-sm">{errors.photo}</p>
             </div>
           )}
+          <p className="mt-1 text-sm text-gray-500">
+            Accepted formats: JPG, PNG, WebP. Max size: 5MB
+          </p>
         </div>
 
         <div>
@@ -466,13 +576,14 @@ const PetCreationForm = ({ onCancel, onSuccess }: { onCancel: () => void; onSucc
             type="button" 
             onClick={onCancel}
             className="px-4 py-2 text-xl font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+            disabled={isSubmitting}
           >
             Cancel
           </button>
           <button 
             type="submit" 
             disabled={isSubmitting}
-            className="px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#3479ba] disabled:bg-opacity-70"
+            className="px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2968a3] disabled:bg-opacity-70"
           >
             {isSubmitting ? 'Creating...' : 'Create Pet'}
           </button>
@@ -492,19 +603,16 @@ const UserDashboard = () => {
   const [loadingPets, setLoadingPets] = useState(false);
 
   const handleViewAllReminders = () => {
-    router.push('/reminders'); // Navigate to the full reminders page
+    router.push('/reminders');
   };
 
-  // ✅ Wrapped fetchPetsData in useCallback
   const fetchPetsData = useCallback(async (petIds: Array<string | Pet>) => {
     setLoadingPets(true);
     try {
-      // Extract all pet IDs (they might be objects or strings)
       const ids = petIds.map(pet => typeof pet === 'object' ? pet.id : pet);
       
       console.log('Fetching details for pet IDs:', ids);
       
-      // Fetch each pet's details
       const petsData = await Promise.all(
         ids.map(async (id) => {
           try {
@@ -526,7 +634,6 @@ const UserDashboard = () => {
         })
       );
       
-      // Filter out any null responses and set the pets state
       const validPets = petsData.filter(pet => pet !== null);
       console.log('Fetched pets data:', validPets);
       setPets(validPets);
@@ -537,7 +644,6 @@ const UserDashboard = () => {
     }
   }, []);
 
-  // ✅ Wrapped fetchUserData in useCallback
   const fetchUserData = useCallback(async () => {
     try {
       const response = await fetch('/api/users/me', {
@@ -554,7 +660,6 @@ const UserDashboard = () => {
 
       const data = await response.json();
       
-      // If user is admin, redirect to admin dashboard
       if (data.user?.roles === 'admin') {
         router.push('/admin');
         return;
@@ -562,7 +667,6 @@ const UserDashboard = () => {
 
       setUser(data.user);
 
-      // If user has ownedPets, fetch the pet details
       if (data.user?.ownedPets && data.user.ownedPets.length > 0) {
         await fetchPetsData(data.user.ownedPets);
       }
@@ -571,15 +675,15 @@ const UserDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [router, fetchPetsData]); // ✅ Added dependencies
+  }, [router, fetchPetsData]);
 
   useEffect(() => {
     fetchUserData();
-  }, [fetchUserData]); // ✅ Now fetchUserData is stable
+  }, [fetchUserData]);
 
   const handlePetCreated = () => {
     setShowAddPetForm(false);
-    fetchUserData(); // Refresh user data to show the new pet
+    fetchUserData();
   };
 
   if (loading) {
@@ -608,7 +712,6 @@ const UserDashboard = () => {
     return (
       <div key={pet.id} className="overflow-hidden bg-white rounded-lg shadow cursor-pointer transition-transform duration-300 hover:scale-[1.03]" onClick={() => router.push(`/pets/${pet.id}`)}>
         {pet.photo && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={pet.photo.url}
             alt={pet.name}
@@ -665,19 +768,17 @@ const UserDashboard = () => {
     );
   };
 
- 
   return (
     <div className={`min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8 ${leagueSpartan.className}`}>
       <div className="mx-auto max-w-7xl">
         <AllRemindersComponent 
           userPets={pets} 
           isOwner={true}
-          maxReminders={3}           // Show max 4 reminders
-          showViewAll={true}         // Show "View All" button
+          maxReminders={3}
+          showViewAll={true}
           onViewAllClick={handleViewAllReminders}
         />
         
-        {/* Owned Pets Section (for Pet Owners) */}
         {user.roles === 'petOwner' && (
           <div className="mb-6 pt-[100px]">
             <div className="flex items-center justify-between mb-8">
@@ -709,11 +810,10 @@ const UserDashboard = () => {
               </div>
             ) : (
               <div className="py-12 text-center bg-white rounded-lg shadow">
-                {/* ✅ Fixed escaped apostrophe */}
                 <p className="mb-4 text-gray-500">You haven&apos;t added any pets yet.</p>
                 <button
                   onClick={() => setShowAddPetForm(true)}
-                  className="inline-flex items-center px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#3479ba]"
+                  className="inline-flex items-center px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2968a3]"
                 >
                   Add Your First Pet
                 </button>
@@ -722,14 +822,11 @@ const UserDashboard = () => {
           </div>
         )}
 
-        {/* Cared Pets Section (for Pet Carers) */}
         {user.roles === 'petCarer' && (
           <div className="mb-8">
             <h2 className="mb-4 text-2xl font-bold text-gray-900">Pets I Care For</h2>
             {user.caredPets && user.caredPets.length > 0 ? (
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {/* You would need to implement similar fetching logic for caredPets */}
-                {/* For now, just display a placeholder */}
                 <div className="col-span-3 py-12 text-center bg-white rounded-lg shadow">
                   <p className="text-gray-500">Loading cared pets...</p>
                 </div>
@@ -739,7 +836,7 @@ const UserDashboard = () => {
                 <p className="mb-4 text-gray-500">You are not currently caring for any pets.</p>
                 <button
                   onClick={() => router.push('/care-opportunities')}
-                  className="inline-flex items-center px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#3479ba]"
+                  className="inline-flex items-center px-4 py-2 text-xl font-medium text-white bg-[#3479ba] border border-transparent rounded-md shadow-sm hover:bg-[#2968a3]"
                 >
                   Browse Care Opportunities
                 </button>
